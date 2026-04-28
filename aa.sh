@@ -48,19 +48,51 @@ for file in $MATCHES; do
     if [[ "$file" == *.smali ]]; then
         echo "Patching $file"
 
-        # Disable all invoke calls in suspicious blocks
-        sed -i 's/^[[:space:]]*invoke-static/# disabled invoke-static/g' "$file"
-        sed -i 's/^[[:space:]]*invoke-virtual/# disabled invoke-virtual/g' "$file"
-        sed -i 's/^[[:space:]]*invoke-direct/# disabled invoke-direct/g' "$file"
+        # Targeted patch: find methods that contain update/version popup keywords
+        # and inject a return-void at the start so they exit immediately.
+        # This leaves all other methods in the file untouched.
+        python3 - "$file" <<'PYEOF'
+import sys, re
 
-        # Flip conditionals
-        sed -i 's/if-nez/if-eqz/g' "$file"
-        sed -i 's/if-eqz/if-nez/g' "$file"
-        sed -i 's/if-gtz/if-lez/g' "$file"
-        sed -i 's/if-ltz/if-gez/g' "$file"
+filepath = sys.argv[1]
+keywords = [
+    'new update available', 'telegram channel', 'outdated or expired',
+    'update now', 'expired', 'latest version', 'updatedialog', 'showupdate',
+    'forceupdate', 'checkupdate', 'updatecheck'
+]
 
-        # Force booleans true
-        sed -i 's/const\/4 v0, 0x0/const\/4 v0, 0x1/g' "$file"
+with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+    content = f.read()
+
+method_re = re.compile(r'(\.method[^\n]*\n)(.*?)(\.end method)', re.DOTALL)
+patched = 0
+
+def patch_method(m):
+    global patched
+    decl   = m.group(1)
+    body   = m.group(2)
+    end    = m.group(3)
+
+    # Only patch non-constructor methods whose return type is void (ends with )V)
+    is_void        = bool(re.search(r'\)V\s*$', decl.strip()))
+    is_constructor = '<init>' in decl or '<clinit>' in decl
+
+    if is_void and not is_constructor:
+        combined = (decl + body).lower()
+        if any(kw in combined for kw in keywords):
+            # Already patched?
+            if 'return-void' not in body.split('\n')[0]:
+                patched += 1
+                return decl + '    return-void\n' + body + end
+    return m.group(0)
+
+new_content = method_re.sub(patch_method, content)
+
+with open(filepath, 'w', encoding='utf-8') as f:
+    f.write(new_content)
+
+print(f"  -> {patched} method(s) patched in {filepath}")
+PYEOF
     fi
 done
 
