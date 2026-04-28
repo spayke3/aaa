@@ -5,7 +5,7 @@
 # https://github.com/spayke3/aaa/raw/refs/heads/main/FreeCine_v3.0.3_VIP_.apk
 # ==========================================================
 
-set -e
+#set -e
 
 URL="https://github.com/spayke3/aaa/raw/refs/heads/main/FreeCine_v3.0.3_VIP_.apk"
 APK="FreeCine_v3.0.3_VIP_.apk"
@@ -27,7 +27,7 @@ fi
 
 echo "[3/10] Install jadx..."
 if ! command -v jadx >/dev/null 2>&1; then
-  wget -q https://github.com/skylot/jadx/releases/latest/download/jadx-1.5.0.zip
+   -q https://github.com/skylot/jadx/releases/latest/download/jadx-1.5.0.zip
   unzip -q jadx-1.5.0.zip -d jadx_tmp
   sudo mv jadx_tmp/bin/jadx /usr/local/bin/
   sudo chmod +x /usr/local/bin/jadx
