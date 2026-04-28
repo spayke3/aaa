@@ -80,10 +80,49 @@ def patch_method(m):
     if is_void and not is_constructor:
         combined = (decl + body).lower()
         if any(kw in combined for kw in keywords):
-            # Already patched?
-            if 'return-void' not in body.split('\n')[0]:
+            lines = body.split('\n')
+
+            # Find the correct insertion point: AFTER .registers/.locals and any
+            # leading directives (.annotation blocks, .param lines, blank lines),
+            # but BEFORE the first real opcode.
+            # Dalvik requires .registers/.locals to precede all opcodes, so
+            # inserting return-void before them produces invalid bytecode.
+            insert_idx = 0
+            i = 0
+            while i < len(lines):
+                stripped = lines[i].strip()
+                if stripped == '':
+                    insert_idx = i + 1
+                    i += 1
+                elif stripped.startswith('.registers') or stripped.startswith('.locals'):
+                    insert_idx = i + 1
+                    i += 1
+                elif stripped.startswith('.annotation'):
+                    i += 1
+                    while i < len(lines) and '.end annotation' not in lines[i]:
+                        i += 1
+                    i += 1  # skip the .end annotation line
+                    insert_idx = i
+                elif stripped.startswith('.param'):
+                    insert_idx = i + 1
+                    i += 1
+                else:
+                    break
+
+            # Already patched? Check if the next non-empty line is already return-void
+            already_patched = False
+            for l in lines[insert_idx:]:
+                s = l.strip()
+                if s == '':
+                    continue
+                already_patched = (s == 'return-void')
+                break
+
+            if not already_patched:
                 patched += 1
-                return decl + '    return-void\n' + body + end
+                lines.insert(insert_idx, '    return-void')
+                new_body = '\n'.join(lines)
+                return decl + new_body + end
     return m.group(0)
 
 new_content = method_re.sub(patch_method, content)
